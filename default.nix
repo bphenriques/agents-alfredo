@@ -12,10 +12,14 @@ let
     install -Dm555 ${lib.getExe drafts} $out/scripts/drafts
   '';
 
+  # A link to a path that does not exist builds fine, so a hermes-agent release that moves a skill would drop it.
+  upstream = path: let skill = "${hermes-agent}/skills/${path}"; in
+    lib.throwIfNot (builtins.pathExists skill) "hermes-agent has no skill ${path}" skill;
+
   # The only skills offered besides the essential `hermes-agent`.
   skills = pkgs.linkFarm "alfredo-skills" {
-    youtube-content = "${hermes-agent}/skills/media/youtube-content";
-    pdf = "${hermes-agent}/skills/productivity/pdf";
+    youtube-content = upstream "media/youtube-content";
+    pdf = upstream "productivity/pdf";
     meal-planning = ./skills/meal-planning;
     recipe-new = withDrafts "recipe-new";
     recipe-import = withDrafts "recipe-import";
@@ -35,7 +39,7 @@ let
     fetch.command = lib.getExe pkgs.mcp-server-fetch;
     time.command = lib.getExe pkgs.mcp-server-time;
 
-    # Fetched on first boot, see TODO.md.
+    # Fetched at service start: https://github.com/bphenriques/agents-alfredo/issues/1
     vault = {
       command = "${pkgs.nodejs}/bin/npx";
       args = [ "-y" "@bitbonsai/mcpvault@0.16.0" vaultRoot ];
@@ -49,8 +53,8 @@ in
 {
   inherit (tools) cookidoo meals drafts;
 
-  soul = builtins.readFile ./SOUL.md;
-  environment = builtins.replaceStrings [ "@vaultRoot@" "@recipesRoot@" "@recipesUrl@" ] [ vaultRoot recipesRoot recipesUrl ] (builtins.readFile ./environment.md);
+  soul = builtins.readFile ./persona/SOUL.md;
+  workspace = builtins.replaceStrings [ "@vaultRoot@" "@recipesRoot@" "@recipesUrl@" ] [ vaultRoot recipesRoot recipesUrl ] (builtins.readFile ./persona/workspace.md);
 
   # nodejs for mcpvault's `#!/usr/bin/env node`, cook-cli for the recipes AGENTS.md, the rest for the pdf and
   # youtube-content skills. Recipes, videos and photos go through drafts.

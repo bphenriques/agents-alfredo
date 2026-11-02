@@ -1,11 +1,14 @@
 import asyncio
 import json
 import re
-import subprocess
 import shutil
+import subprocess
+import sys
 from datetime import date, timedelta
 
 import pytest
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from mcp.server.mcpserver.exceptions import UnexpectedToolError
 
 import cookidoo as c
@@ -599,3 +602,13 @@ def test_a_wish_without_a_day_goes_on_the_first_free_one(library, fake_cookidoo,
     (library / "Pratos" / "Salmão no forno.cook").write_text("---\nservings: 2\ntime: 30\ndifficulty: easy\n---\n\n@salmão{2%lombos}.\n\nAssar.\n")
     said = asyncio.run(k.plan_week("2026-10-26", 3, wishes=[{"ingredient": "salmão"}, {"max_minutes": 90}]))
     assert "| ter 27/10 | Salmão no forno |" in said and k.load()["limit"] == {"max_minutes": 90}   # Monday is My week's
+
+
+def test_the_server_starts_and_offers_its_tools():
+    async def tools():
+        server = StdioServerParameters(command=sys.executable, args=[k.__file__, "serve"])
+        async with stdio_client(server) as (read, write), ClientSession(read, write) as session:
+            await session.initialize()
+            return {t.name for t in (await session.list_tools()).tools}
+    assert asyncio.run(tools()) == {"plan_week", "adjust_week", "commit_plan", "swap_soup", "rate_dish", "find_recipes",
+                                    "groceries_preview", "sync_cookidoo"}

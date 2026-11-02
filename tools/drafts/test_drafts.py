@@ -230,7 +230,7 @@ def test_promote_replaces_a_recipe_and_carries_its_photo_and_plan_links(tmp_path
     library(tmp_path, monkeypatch, "", **{"Pratos/Garlic toast": "---\nservings: 2\ntime: 10\ndifficulty: easy\n---\n\n@alho{1}."})
     (d.LIBRARY / "Pratos" / "Garlic toast.jpg").write_bytes(b"jpg")
     (d.LIBRARY / "plans").mkdir()
-    (d.LIBRARY / "plans" / "w.menu").write_text("- @./Pratos/Garlic toast{} \\\n- sobras: Garlic toast\n")
+    (d.LIBRARY / "plans" / "w.menu").write_text("- @./Pratos/Garlic toast{} \\\n- sobras: Garlic toast \\\n- sobras: Garlic toast rústico\n")
     dish = {"source": "library", "id": "Pratos/Garlic toast", "name": "Garlic toast",
             "url": "https://recipes.test/recipe/Pratos/Garlic%20toast.html"}
     monkeypatch.setattr(d, "PLAN", tmp_path / "plan.json")
@@ -242,7 +242,7 @@ def test_promote_replaces_a_recipe_and_carries_its_photo_and_plan_links(tmp_path
         "Pequeno-almoço/Torrada de alho.cook", "Pequeno-almoço/Torrada de alho.jpg"]
     moved = d.LIBRARY / "Pequeno-almoço" / "Torrada de alho.cook"
     assert (d.DRAFTS / "Garlic toast.cook.old").exists() and moved.with_suffix(".jpg").read_bytes() == b"jpg"
-    assert (d.LIBRARY / "plans" / "w.menu").read_text() == "- @./Pequeno-almoço/Torrada de alho{} \\\n- sobras: Torrada de alho\n"
+    assert (d.LIBRARY / "plans" / "w.menu").read_text() == "- @./Pequeno-almoço/Torrada de alho{} \\\n- sobras: Torrada de alho \\\n- sobras: Garlic toast rústico\n"
     assert json.loads(d.PLAN.read_text()) == {"exclude": ["Pequeno-almoço/Torrada de alho"], "plan": {"days": [{"main": {
         "source": "library", "id": "Pequeno-almoço/Torrada de alho", "name": "Torrada de alho",
         "url": "https://recipes.test/recipe/Pequeno-almo%C3%A7o/Torrada%20de%20alho.html"}}], "soups": []}}

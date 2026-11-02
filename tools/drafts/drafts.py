@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 
 from recipe_scrapers import scrape_html
+from recipes import CATEGORIES, LEVELS, PART, UNITS, read, write
 
 LIBRARY = Path("@library@")
 DRAFTS = Path("@drafts@")
@@ -30,8 +31,6 @@ MAX_IMAGE = 10 * 2**20
 MAX_PAGE = 30000   # characters of a page's text the model reads
 
 VIDEO_HOSTS = ("instagram.com", "youtube.com", "youtu.be", "tiktok.com")
-CATEGORIES = ("Pratos", "Sopas", "Sobremesas", "Pequeno-almoço", "Molhos", "Acompanhamentos", "Bases", "Bebidas", "Bebé")   # the library's folders (formatting.md)
-LEVELS = ("easy", "medium", "hard")
 UA = {"User-Agent": "Mozilla/5.0"}
 AISLE = "aisle.conf"
 REQUIRED = ("servings", "time", "difficulty")   # formatting.md's
@@ -47,16 +46,6 @@ BRAZILIAN = {"assadeira": "tabuleiro", "barbante": "cordel", "gergelim": "sésam
 NUMBER_WORDS = {"um": 1, "uma": 1, "dois": 2, "duas": 2, "três": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
                 "oito": 8, "nove": 9, "dez": 10, "meio": 0.5, "meia": 0.5, "one": 1, "two": 2, "three": 3, "four": 4,
                 "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "half": 0.5}
-# One Portuguese spelling per unit (formatting.md), so the shopping list sums them; a plain count has none.
-UNITS = {"gram": "g", "grams": "g", "gramas": "g", "dente": "dentes", "clove": "dentes", "cloves": "dentes",
-         "folha": "folhas", "leaf": "folhas", "leaves": "folhas", "fatia": "fatias", "tira": "tiras", "talo": "talos",
-         "pé": "pés", "ramo": "ramos", "lata": "latas", "gota": "gotas", "cubo": "cubos", "tbsp": "c. sopa", "tablespoon": "c. sopa",
-         "tablespoons": "c. sopa", "c. de sopa": "c. sopa", "colher de sopa": "c. sopa", "colheres de sopa": "c. sopa",
-         "tsp": "c. chá", "teaspoon": "c. chá", "teaspoons": "c. chá", "c. de chá": "c. chá", "colher de chá": "c. chá",
-         "colheres de chá": "c. chá", "pinch": "pitada", "pinches": "pitada", "pitadas": "pitada", "bunch": "molho",
-         "sprig": "raminhos", "sprigs": "raminhos", "raminho": "raminhos", "cup": "chávena", "cups": "chávena",
-         "chávenas": "chávena", "unid.": "", "unid": "", "unidade": "", "unidades": "", "un.": ""}
-PART = re.compile(r"(dentes?|folhas?|fatias?|tiras?|talos?) de (.+)")   # a count of parts, which goes in the unit
 VULGAR = {"½": "1/2", "⅓": "1/3", "⅔": "2/3", "¼": "1/4", "¾": "3/4", "⅛": "1/8"}
 
 INGREDIENT = {"type": "object", "required": ["name", "quantity", "unit", "note"], "properties": {
@@ -172,12 +161,14 @@ def from_video(url):
                         "--print-to-file", "%(thumbnail|)s", f"{tmp}/thumbnail.txt", url], check=True, timeout=TIMEOUT)
         caption = Path(tmp, "caption.txt").read_text().strip()
         image = Path(tmp, "thumbnail.txt").read_text().strip() or None
-        audio = next(Path(tmp).glob("audio.*"))
+        audio = next(Path(tmp).glob("audio.*"), None)
         heard = subprocess.run([CURL, "--silent", "--show-error", "--fail", "--form", f"file=@{audio}",
-                                "--form", "response_format=text", SPEECH_URL], capture_output=True, text=True, timeout=TIMEOUT)
-    transcript = heard.stdout.strip() if heard.returncode == 0 else ""
+                                "--form", "response_format=text", SPEECH_URL], capture_output=True, text=True, timeout=TIMEOUT) if audio else None
+    transcript = heard.stdout.strip() if heard and heard.returncode == 0 else ""
     recipe = from_text(f"Caption:\n{caption or '(none)'}\n\nTranscript:\n{transcript or '(no speech)'}")
-    if heard.returncode != 0:
+    if heard is None:
+        recipe["notes"].append("the video has no audio: only the caption was read")
+    elif heard.returncode != 0:
         recipe["notes"].append("the transcription failed (the ai host may be off): only the caption was read")
     recipe["notes"].append("the steps were written by the model from the transcript")
     if image:
@@ -415,8 +406,7 @@ def aisle():
 
 def lint(path):
     """What formatting.md asks of a recipe that code can check, as doubts: the user fixes each, so none can loop."""
-    recipe = json.loads(subprocess.run([COOK, "recipe", "read", "--format", "json", str(path)],
-                                       capture_output=True, text=True, check=True).stdout)
+    recipe = read(path)
     names, twice = [x["name"] for x in recipe["ingredients"]], set()
     for section in recipe["sections"]:   # each `= Component =` may list its own ingredients
         used = [names[i["index"]] for c in section["content"] if c["type"] == "step"
@@ -461,10 +451,13 @@ def promote_aisle():
         checked = subprocess.run([COOK, "doctor", "aisle"], cwd=tmp, capture_output=True, text=True)
     if checked.returncode != 0:
         sys.exit(f"The draft has issues, fix them first:\n{checked.stdout}{checked.stderr}")
-    shutil.copyfile(conf, conf.with_name(f"{AISLE}.bak"))   # the share refuses chmod, which shutil.copy does
+    backup = conf.exists()
+    if backup:
+        shutil.copyfile(conf, conf.with_name(f"{AISLE}.bak"))   # the share refuses chmod, which shutil.copy does
+    conf.parent.mkdir(exist_ok=True)
     shutil.move(draft, conf)
-    print(f"Saved {AISLE} in {conf.parent}, the previous one as {AISLE}.bak. "
-          f"{len(missing(LIBRARY))} ingredients are still missing from it.")
+    previous = f", the previous one as {AISLE}.bak" if backup else ""
+    print(f"Saved {AISLE} in {conf.parent}{previous}. {len(missing(LIBRARY))} ingredients are still missing from it.")
 
 
 def ident(path):
@@ -475,10 +468,12 @@ def ident(path):
 def relink(old, new):
     """Point the saved plans at a recipe that moved or was renamed, and say how many changed."""
     was, now, changed = ident(old), ident(new), 0
+    leftovers = re.compile(rf"(?m)^(- sobras: ){re.escape(old.stem)}( \\)?$")   # the whole name: Frango is not Frango assado
     for menu in (LIBRARY / "plans").glob("*.menu"):
         text = menu.read_text()
-        if (relinked := text.replace(f"@./{was}{{", f"@./{now}{{").replace(f"sobras: {old.stem}", f"sobras: {new.stem}")) != text:
-            menu.write_text(relinked)
+        relinked = leftovers.sub(lambda m: f"{m[1]}{new.stem}{m[2] or ''}", text.replace(f"@./{was}{{", f"@./{now}{{"))
+        if relinked != text:
+            write(menu, relinked)
             changed += 1
     relink_plan(was, now)
     return changed
@@ -500,9 +495,7 @@ def relink_plan(old, new):
         return node
     state = renamed(json.loads(PLAN.read_text()))
     state["exclude"] = [new if x == old else x for x in state.get("exclude", [])]
-    tmp = PLAN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False))
-    tmp.replace(PLAN)
+    write(PLAN, json.dumps(state, ensure_ascii=False))
 
 
 def promote(name, replace=None):

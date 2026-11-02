@@ -24,7 +24,7 @@ alfredo = inputs.agents-alfredo.lib.alfredo {
 };
 ```
 
-Wire the result into `services.hermes-agent`: `soul` as `SOUL.md`, `environment` as the workspace `AGENTS.md`, plus `packages`, `mcpServers` and `settings`. Append anything personal to `soul` on the host.
+Wire the result into `services.hermes-agent`: `soul` as `SOUL.md`, `workspace` as the workspace `AGENTS.md`, plus `packages`, `mcpServers` and `settings`. Append anything personal to `soul` on the host.
 
 The tool policy steers the model but is not a boundary: `terminal` runs anything the `hermes` user can. Run it in a VM.
 

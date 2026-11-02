@@ -3,43 +3,21 @@
 let
   inherit (facts) recipesRoot recipesUrl stateRoot cookidooCollection modelUrl model speechUrl;
 
-  # Filled once for real and once against ./fixtures for the tests.
-  fill = name: values:
-    let
-      text = builtins.replaceStrings (map (k: "@${k}@") (builtins.attrNames values)) (builtins.attrValues values)
-        (builtins.readFile (./. + "/${name}/${name}.py"));
-      left = builtins.filter builtins.isList (builtins.split "@([A-Za-z]+)@" text);
-    in
-    lib.throwIf (left != [ ]) "${name}.py: no value for ${lib.concatMapStringsSep ", " (m: "@${builtins.head m}@") left}" text;
+  fill = import ./fill.nix { inherit lib; };
+  tests = import ./tests.nix { inherit pkgs lib; };
   cook = lib.getExe pkgs.cook-cli;
   planFile = "${stateRoot}/meals-plan.json";   # meals' current plan, which drafts relinks on a rename
 
-  tests = pkgs.runCommand "alfredo-tools-tests" {
-    nativeBuildInputs = [ (pkgs.python3.withPackages (ps: with ps; [ cookidoo-api mcp recipe-scrapers pytest ])) ];
-  } (let
-    fixture = { tokenFile = "token.json"; planFile = "plan.json"; library = "${./fixtures}"; site = "https://recipes.test";
-                collection = "test"; cookidoo = "cookidoo"; drafts = "drafts"; modelUrl = "http://model.test";
-                model = "test"; speechUrl = "http://speech.test"; ytDlp = "yt-dlp"; curl = "curl"; magick = "magick";
-                inherit cook; };
-  in ''
-    cp ${pkgs.writeText "cookidoo.py" (fill "cookidoo" fixture)} cookidoo.py
-    cp ${pkgs.writeText "meals.py" (fill "meals" fixture)} meals.py
-    cp ${pkgs.writeText "drafts.py" (fill "drafts" fixture)} drafts.py
-    cp ${./cookidoo/test_cookidoo.py} test_cookidoo.py
-    cp ${./meals/test_meals.py} test_meals.py
-    cp ${./drafts/test_drafts.py} test_drafts.py
-    python -m pytest -q -p no:cacheprovider
-    touch $out
-  '');
+  recipes = pkgs.python3Packages.toPythonModule
+    (pkgs.writeTextDir "${pkgs.python3.sitePackages}/recipes.py" (fill "recipes" { inherit cook; }));
 
   # Depending on the tests means a failing program never builds, so it never deploys.
-  program = name: libraries: values: (pkgs.writers.writePython3Bin name { inherit libraries; flakeIgnore = [ "E501" ]; }
+  program = name: libraries: values: (pkgs.writers.writePython3Bin name { libraries = [ recipes ] ++ libraries; flakeIgnore = [ "E501" ]; }
     (fill name values)).overrideAttrs { inherit tests; };
 
   # On the state volume, writable: every refresh rotates the token.
   cookidoo = program "cookidoo" [ pkgs.python3Packages.cookidoo-api ] {
     tokenFile = "${stateRoot}/cookidoo-token.json"; library = "${recipesRoot}/library"; collection = cookidooCollection;
-    inherit cook;
   };
   meals = program "meals" [ pkgs.python3Packages.mcp ] {
     library = "${recipesRoot}/library"; site = recipesUrl; cookidoo = lib.getExe cookidoo; inherit planFile cook;
@@ -51,5 +29,5 @@ let
   };
 in
 {
-  inherit cookidoo meals drafts tests;
+  inherit cookidoo meals drafts;
 }

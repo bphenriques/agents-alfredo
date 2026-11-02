@@ -18,11 +18,11 @@ import aiohttp
 from cookidoo_api import Cookidoo
 from cookidoo_api.helpers import get_localization_options
 from cookidoo_api.types import CookidooConfig
+from recipes import PART, UNITS, read, write
 
 TOKEN = Path("@tokenFile@")
 LIBRARY = Path("@library@")
 COLLECTION = "@collection@"
-COOK = "@cook@"
 COUNTRY, LANGUAGE = "pt", "pt-PT"
 LOCALIZATION = None  # set in main(); it reads a bundled file, but through an async API
 
@@ -44,11 +44,6 @@ SYNC_TAG = "cookidoo"   # marks a copy of a Cookidoo recipe; its `cookidoo:` fie
 PROSE = str.maketrans({"@": "a", "#": "nº", "~": "-", "{": "(", "}": ")"})
 # Thermomix symbols, private-use characters no font outside Cookidoo draws. Any other is a mode's icon after its name.
 SYMBOLS = {"\ue003": "sentido inverso", "\ue002": "colher"}
-# One spelling per unit (formatting.md), so the shopping list sums them: Cookidoo writes the singular for one.
-UNITS = {"dente": "dentes", "folha": "folhas", "fatia": "fatias", "tira": "tiras", "talo": "talos", "pé": "pés",
-         "ramo": "ramos", "raminho": "raminhos", "lata": "latas", "gota": "gotas", "cubo": "cubos", "tsp": "c. chá",
-         "tbsp": "c. sopa"}
-PART = re.compile(r"(dentes?|folhas?|fatias?|tiras?|talos?) de (.+)")   # a count of parts, which formatting.md puts in the unit
 MAX_IMAGE = 10 * 2**20
 
 
@@ -154,12 +149,6 @@ async def sign_in(email, password):
 
 # The copy into the library: plain recipe data in, Cooklang files out.
 
-def read(path=None, text=None):
-    """A recipe through cook's own parser, from a file or from text."""
-    args = [COOK, "recipe", "read", "--format", "json", *([str(path)] if path else [])]
-    return json.loads(subprocess.run(args, input=text, capture_output=True, text=True, check=True).stdout)
-
-
 def clean(text):
     """Cookidoo's marked-up text as one line of plain Cooklang prose: no markup, and nothing Cooklang would parse
     (an ingredient, cookware, timer or comment inside, a section or note at the start)."""
@@ -214,9 +203,7 @@ def write_if_changed(path, data):
     """Idempotent: an unchanged copy is not rewritten, so the site sees no change either."""
     if path.exists() and path.read_bytes() == data:
         return False
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data)
-    tmp.replace(path)
+    write(path, data)
     return True
 
 
@@ -322,12 +309,14 @@ async def sync():
         recipes = await collection_recipes(api)
     images = {}
     async with aiohttp.ClientSession() as http:
-        for r in recipes:
-            if r["image"]:
+        for r in [r for r in recipes if r["image"]]:
+            try:
                 async with http.get(r["image"]) as resp:
                     resp.raise_for_status()
                     if (data := photo(resp.content_type, await body(resp.content.iter_chunked(65536)))) is not None:
                         images[r["id"]] = data
+            except (aiohttp.ClientError, TimeoutError):   # the copy keeps its photo, or goes without one
+                continue
     return apply(recipes, images)
 
 

@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from recipes import LEVELS, read, write
 
 PLAN = Path("@planFile@")
 LIBRARY = Path("@library@")
@@ -41,7 +42,6 @@ RATINGS = {"liked": "favorita", "never": "nunca"}   # each rating's tag, which t
 GATHERING = "grupos"   # a tag for dishes meant for guests, planned only when the user names one
 MEAL_SERVINGS = 2   # one per adult; a main lasts as many days as its servings cover
 LEFTOVER_DAYS = 3   # days after cooking that leftovers are still eaten
-LEVELS = ("easy", "medium", "hard")
 SHOWN_FOR = timedelta(hours=1)   # a "sim" in a later chat must not save a plan the user no longer has in front of them
 
 
@@ -61,12 +61,6 @@ def protein(ingredients, declared=None):
     names = " | ".join(ingredients)
     meat, fish = bool(MEAT_RE.search(names)), bool(FISH_RE.search(names))
     return "both" if meat and fish else "meat" if meat else "fish" if fish else "vegetarian"
-
-
-def read(path):
-    """A recipe through cook's own parser."""
-    return json.loads(subprocess.run([COOK, "recipe", "read", "--format", "json", str(path)],
-                                     capture_output=True, text=True, check=True).stdout)
 
 
 def library():
@@ -333,9 +327,7 @@ def write_menu(state):
     path, text = menu_path(state), menu(state["plan"])
     if not path.exists() or path.read_text() != text:
         path.parent.mkdir(exist_ok=True)
-        tmp = path.with_name(f".{path.name}.tmp")
-        tmp.write_text(text)
-        tmp.replace(path)
+        write(path, text)
 
 
 def summary(state):
@@ -372,6 +364,7 @@ async def commit(state):
     """Save the plan to the library, put its Cookidoo dishes in My week and its groceries on the shopping list,
     replacing what an earlier commit put in either. `in_week` and `shopping` hold what commits put there, so the
     user's own entries are never touched. Returns the saved state and the lines for the user."""
+    cookidoo_recipes, items = await asyncio.to_thread(groceries, state)   # first: a failure here changes nothing
     span = {d.isoformat() for d in plan_span(state)}
     ours, want = state.get("in_week", []), my_week_dishes(state)
     stale = [p for p in ours if p[0] in span and p not in want]
@@ -385,7 +378,6 @@ async def commit(state):
             notes += [f"No My week: {len(want)} prato(s) do Cookidoo."] if want else []
         except ToolError as e:
             notes.append(f"O My week não foi atualizado ({e}); guarda de novo para tentar outra vez.")
-    cookidoo_recipes, items = await asyncio.to_thread(groceries, state)
     order = {"recipes": [r["cookidoo_id"] for r in cookidoo_recipes], "items": [f"{name} {qty}".strip() for name, qty in items]}
     sent = state.get("shopping")
     try:
@@ -427,9 +419,7 @@ def shown_lately(state):
 def save(state):
     """Every save is followed by showing the plan, so it also records when it was last shown."""
     state["shown"] = datetime.now().isoformat(timespec="seconds")
-    tmp = PLAN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False))
-    tmp.replace(PLAN)
+    write(PLAN, json.dumps(state, ensure_ascii=False))
 
 
 def placed():
@@ -706,14 +696,12 @@ def retag(path, rating):
 
 
 @mcp.tool(structured_output=False)
-async def rate_dish(recipe: str, rating: str | None) -> str:
+async def rate_dish(recipe: str, rating: Literal["liked", "never"] | None) -> str:
     """Remember what the household thinks of a main dish or soup, and return a line to relay as it is.
 
     recipe: its name as the user says it. rating: "liked" (planned more often), "never" (not planned again),
     or null to forget an earlier rating.
     """
-    if rating not in (None, *RATINGS):
-        raise ToolError(f"rating must be liked, never or null, not {rating!r}.")
     found = await asyncio.to_thread(library)
     dish = find(found["main"] + found["soup"], recipe)
     await asyncio.to_thread(retag, LIBRARY / f"{dish['id']}.cook", rating)
@@ -746,7 +734,10 @@ def groceries(state):
     cookidoo_recipes = [r for r in recipes if r["cookidoo_id"]]
     paths = [str(LIBRARY / f"{r['id']}.cook") for r in recipes if not r["cookidoo_id"]]
     # from the library, cook reads its config/: aisle.conf merges an ingredient's other names, pantry.conf drops staples
-    out = subprocess.run([COOK, "shopping-list", "--plain", *paths], cwd=LIBRARY, capture_output=True, text=True, check=True).stdout if paths else ""
+    try:
+        out = subprocess.run([COOK, "shopping-list", "--plain", *paths], cwd=LIBRARY, capture_output=True, text=True, check=True).stdout if paths else ""
+    except subprocess.CalledProcessError as e:
+        raise ToolError(f"cook shopping-list: {e.stderr.strip() or e}") from None
     # cook pads the name column, so two or more spaces separate the name from its quantity
     items = [(*re.split(r"\s{2,}", line.strip(), maxsplit=1), "")[:2] for line in out.splitlines() if line.strip()]
     return cookidoo_recipes, items
