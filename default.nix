@@ -75,7 +75,8 @@ in
     mcp_servers = lib.mapAttrs (_: _: { tools = { resources = false; prompts = false; }; }) mcpServers;
 
     # `search` is web_search alone; pages go through the `fetch` MCP.
-    platform_toolsets.api_server = [ "memory" "session_search" "todo" "vision" "cronjob" "terminal" "skills" "search" ];
+    # The terminal (`cli`) gets the same tools, so a conversation moved there keeps them.
+    platform_toolsets = lib.genAttrs [ "api_server" "cli" ] (_: [ "memory" "session_search" "todo" "vision" "cronjob" "terminal" "skills" "search" ]);
 
     skills = {
       # Read-only, so agent-created skills land in HERMES_HOME/skills.
