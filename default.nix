@@ -71,6 +71,13 @@ in
     # "auto" hides MCP tools behind a search indirection, and the model then drops their required arguments.
     tools.tool_search.enabled = "off";
 
+    # A turn takes at most 12 model calls in practice; a model retrying a failing tool would otherwise loop unbounded.
+    # Warned at 80%, it answers rather than being cut off.
+    agent = {
+      max_turns = 25;
+      budget_warning_ratio = 0.8;
+    };
+
     # Otherwise hermes adds four prompt/resource wrapper tools per server, outside the allowlists.
     mcp_servers = lib.mapAttrs (_: _: { tools = { resources = false; prompts = false; }; }) mcpServers;
 
