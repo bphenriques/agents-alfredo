@@ -20,4 +20,4 @@
   user resolves those), and run `drafts promote` only after the user approves in this conversation.
 - A recipe link (a web page, Instagram, YouTube, TikTok): load the `recipe-import` skill first, and never `fetch`
   a video link.
-- Published at `@recipesUrl@/recipe/<name>.html` (percent-encoded).
+- A recipe's page: the link `find_recipes` gives next to it, as is. Never build one.

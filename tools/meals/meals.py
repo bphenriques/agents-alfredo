@@ -748,7 +748,7 @@ async def find_recipes(words: str, folder: str | None = None) -> str:
     """The library's recipes whose name or ingredients hold every word given: a food in any form or language
     config/aisle.conf knows (salmon, salmões and salmão alike), or a word of the name. Pass the user's words as they
     said them: a misspelt word is corrected to the closest one, and the reply says so. Returns their paths, for
-    read_recipe, those named so first.
+    read_recipe, each with its page's link to give the user as is, those named so first.
 
     folder: one folder to look in, e.g. "Sopas"."""
     def scan():
@@ -769,7 +769,8 @@ async def find_recipes(words: str, folder: str | None = None) -> str:
         found, note = matching(fixed), f"Sem {words!r}; com {fixed!r}: "
     if not found:
         return f"Nenhuma receita com {words!r}" + (f" em {folder}." if folder else ".")
-    return "\n".join([f"{note}{len(found)} receita(s):", *found[:40], *(["…"] if len(found) > 40 else [])])
+    return "\n".join([f"{note}{len(found)} receita(s):", *(f"{path}: {SITE}/recipe/{quote(path)}.html" for path in found[:40]),
+                      *(["…"] if len(found) > 40 else [])])
 
 
 @mcp.tool(structured_output=False)

@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from datetime import date, timedelta
+from urllib.parse import quote
 
 import pytest
 from mcp import ClientSession, StdioServerParameters
@@ -408,9 +409,13 @@ def test_a_misspelt_word_is_corrected_to_the_closest_known_one(query, fixed):
     assert k.corrected(query, WORDS, DISHES) == fixed
 
 
+def page(path):
+    return f"{path}: {k.SITE}/recipe/{quote(path)}.html"
+
+
 def test_find_recipes_corrects_a_typo_and_says_so(library):
     (library / "Pratos" / "Esparguete à bolonhesa.cook").write_text("---\nservings: 4\n---\n\n@esparguete{500%g}.\n\nCozer.\n")
-    assert asyncio.run(k.find_recipes("esparguette")) == "Sem 'esparguette'; com 'esparguete': 1 receita(s):\nPratos/Esparguete à bolonhesa"
+    assert asyncio.run(k.find_recipes("esparguette")) == "Sem 'esparguette'; com 'esparguete': 1 receita(s):\n" + page("Pratos/Esparguete à bolonhesa")
 
 
 def test_sal_is_not_salmao():
@@ -422,8 +427,8 @@ def test_find_recipes_lists_those_named_first(library):
     (library / "Sopas" / "Sopa de peixe.cook").write_text("---\nservings: 4\n---\n\n@salmon{200%g}, @alho{1%dentes}.\n\nCozer.\n")
     (library / "config").mkdir()
     (library / "config" / "aisle.conf").write_text("[peixaria]\nsalmão|salmon|salmões\n")
-    assert asyncio.run(k.find_recipes("salmões")) == "2 receita(s):\nPratos/Salmão no forno\nSopas/Sopa de peixe"
-    assert asyncio.run(k.find_recipes("salmão", "Sopas")) == "1 receita(s):\nSopas/Sopa de peixe"
+    assert asyncio.run(k.find_recipes("salmões")) == "2 receita(s):\n" + page("Pratos/Salmão no forno") + "\n" + page("Sopas/Sopa de peixe")
+    assert asyncio.run(k.find_recipes("salmão", "Sopas")) == "1 receita(s):\n" + page("Sopas/Sopa de peixe")
     assert asyncio.run(k.find_recipes("lagosta")) == "Nenhuma receita com 'lagosta'."
 
 
