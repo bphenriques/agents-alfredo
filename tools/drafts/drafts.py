@@ -82,11 +82,13 @@ def number(quantity):
 
 
 def ask_model(prompt, schema):
-    body = {"model": MODEL, "stream": False, "think": False, "format": schema, "options": {"temperature": 0},
+    body = {"model": MODEL, "stream": False, "reasoning_effort": "none", "temperature": 0,
+            "response_format": {"type": "json_schema", "json_schema": {"name": "result", "schema": schema}},
             "messages": [{"role": "user", "content": prompt}]}
-    req = urllib.request.Request(f"{MODEL_URL}/api/chat", json.dumps(body).encode(), {"Content-Type": "application/json"})
+    req = urllib.request.Request(f"{MODEL_URL}/chat/completions", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        return json.loads(json.loads(r.read())["message"]["content"])
+        return json.loads(json.loads(r.read())["choices"][0]["message"]["content"])
 
 
 def first(*getters):
