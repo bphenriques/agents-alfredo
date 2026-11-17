@@ -1,8 +1,20 @@
 # Alfredo
 
-A household assistant for [hermes-agent](https://github.com/NousResearch/hermes-agent), built for a local model. It plans the week's meals, keeps a [Cooklang](https://cooklang.org) recipe library, and reads and files notes in an Obsidian vault. It speaks Portuguese.
+A personal assistant for [hermes-agent](https://github.com/NousResearch/hermes-agent), built for a local model. It speaks Portuguese.
 
 Small local models are unreliable at composing structured output, so the code composes and the model relays. Tools return short text ready to show, and skills tell the model when to call them.
+
+## Skills
+
+| Skill | Does |
+|---|---|
+| [meal-planning](./skills/meal-planning/SKILL.md) | Plans the week's meals from the recipe library and fills Cookidoo's My week and shopping list |
+| [recipe-import](./skills/recipe-import/SKILL.md) | Drafts a recipe from a web page or video into the library |
+| [recipe-new](./skills/recipe-new/SKILL.md) | Drafts a recipe the user describes |
+| [recipe-aisle](./skills/recipe-aisle/SKILL.md) | Completes the shopping list's sections and ingredient names |
+| youtube-content, pdf | Upstream hermes-agent skills |
+
+Without a skill, it reads and files notes in an Obsidian vault, searches the web and fetches pages.
 
 ## Use
 
@@ -28,19 +40,8 @@ Wire the result into `services.hermes-agent`: `soul` as `SOUL.md`, `workspace` a
 
 The tool policy steers the model but is not a boundary: `terminal` runs anything the `hermes` user can. Run it in a VM.
 
-## Meals ("Cozinha")
+The programs in [tools](./tools) are tested on build, so a failing test blocks the deploy. `nix flake check` runs them alone.
 
-- [meals](./tools/meals/meals.py): MCP server that plans the week from the library and saves plans to `plans/<date>.menu`. Saving also fills Cookidoo's My week and shopping list.
-- [cookidoo](./tools/cookidoo/cookidoo.py): the only Cookidoo client. Syncs a collection into the library, and writes My week and the shopping list without touching your own entries.
-- [drafts](./tools/drafts/drafts.py): drafts recipes from pages ([recipe-scrapers](https://github.com/hhursev/recipe-scrapers)), videos (yt-dlp, then whisper) or text, plus `aisle.conf` entries, into `drafts/<folder>/`. `promote` moves a reviewed draft into the library.
-- [cook-mcp](https://github.com/cook-md/cook-mcp): reads recipe files. Search is `find_recipes` in meals, which takes food names in any form `aisle.conf` knows.
+## Privacy
 
-The tools' tests run on build, so a failing test blocks the deploy. `nix flake check` runs them alone.
-
-| to | do |
-|---|---|
-| sign in to Cookidoo | `sudo -u hermes cookidoo login` |
-| check planning | `sudo -u hermes meals propose` |
-| draft an import by hand | `sudo -u hermes drafts new <url>` |
-| replace a library recipe | copy it into `drafts/<folder>/`, edit it, then `sudo -u hermes drafts promote "<new name>" --replace "<name>"` |
-| complete aisle.conf | `sudo -u hermes drafts aisle`, then `drafts promote aisle.conf` |
+Alfredo runs on its owner's hardware and serves only its owner. What it reads and writes stays on that host and the services the owner connects it to. It shares nothing with anyone else.
