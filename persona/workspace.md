@@ -21,3 +21,7 @@
 - A recipe link (a web page, Instagram, YouTube, TikTok): load the `recipe-import` skill first, and never `fetch`
   a video link.
 - A recipe's page: the link `find_recipes` gives next to it, as is. Never build one.
+
+## Agenda
+
+- Events and tasks are the `agenda` tools: load the `agenda` skill first. Never read or write the calendar files yourself.

@@ -16,12 +16,17 @@ Alfredo, a household assistant for hermes-agent. Overview in [README.md](./READM
 ## Layout
 
 - `persona/`: the prompt files. `skills/`: Alfredo's runtime skills, not coding-agent ones.
-- `tools/<name>/<name>.py`: the programs. `tools/recipes/recipes.py` holds what they share about the library format.
+- A domain is a program in `tools/<name>/` and, when the model needs guidance, a skill in `skills/<name>/`. It reaches
+  only its own facts: meals the recipe library, agenda the calendars.
+- What programs share is a module, never an import of another program: `tools/recipes/recipes.py` holds the library
+  format, `tools/language/language.py` the household's words (days, times, labels).
+- Programs keep standard values (ISO dates, iCalendar, Cooklang) and talk to each other in them. Only replies speak
+  the household's language, through `language`.
 
 ## Tools
 
 - `@placeholders@` are filled by Nix, and an unfilled one fails the build.
-- Every program has a pytest file beside it, run on build against `tools/fixtures`. Add a test with every behaviour change.
+- Every program and shared module has a pytest file beside it, run on build. Add a test with every behaviour change.
 - `nix flake check` runs the tests, flake8 and an evaluation of the whole definition.
 
 ## Iterating

@@ -7,7 +7,6 @@ import json
 import random
 import re
 import subprocess
-import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -15,6 +14,7 @@ from urllib.parse import quote
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from language import WEEKDAYS, label, plain
 from recipes import LEVELS, read, write
 
 PLAN = Path("@planFile@")
@@ -34,7 +34,6 @@ FISH = ("bacalhau", "salmão", "atum", "peixe", "pescada", "dourada", "robalo", 
         "fish", "salmon", "tuna", "cod", "hake", "prawn", "shrimp", "squid", "octopus", "sardine", "mackerel", "trout")
 
 # What the tools return is shown to the user as it is, so its labels are the household's language.
-WEEKDAYS = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
 PROTEINS = {"meat": "carne", "fish": "peixe", "both": "carne e peixe", "vegetarian": "vegetariano", "unknown": "?"}
 SOUP_DAYS = 3
 COURSES = {"Pratos": "main", "Sopas": "soup"}   # the library folders the planner plans from
@@ -289,11 +288,6 @@ def compose(span, soups, mains, planned, keep_mains, keep_soups, exclude, recent
     return {"days": days, "soups": blocks, "alternatives": alternatives, "notes": notes}
 
 
-def label(d):
-    d = date.fromisoformat(d) if isinstance(d, str) else d
-    return f"{WEEKDAYS[d.weekday()]} {d:%d/%m}"
-
-
 def link(r):
     return f"[{r['name']}]({r['url']})" + (" (Cookidoo)" if r["source"] == "cookidoo" else "")
 
@@ -429,10 +423,6 @@ def placed():
 
 def plan_span(state):
     return [date.fromisoformat(state["start"]) + timedelta(n) for n in range(state["days"])]
-
-
-def plain(text):
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().casefold().strip()
 
 
 def resolve(state, day):

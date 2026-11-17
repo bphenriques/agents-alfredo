@@ -1,10 +1,10 @@
 # Alfredo's definition for hermes-agent. See ./README.md.
 { pkgs, lib, hermes-agent, facts }:
 let
-  inherit (facts) vaultRoot recipesRoot recipesUrl;
+  inherit (facts) vaultRoot recipesRoot recipesUrl calendarsRoot;
 
   tools = import ./tools { inherit pkgs lib facts; };
-  inherit (tools) meals drafts;
+  inherit (tools) meals drafts agenda;
 
   # Copied, not linked: skill_view and `find -type f` reject a file that resolves outside the skill's folder.
   withDrafts = name: pkgs.runCommand name { } ''
@@ -24,10 +24,12 @@ let
     recipe-new = withDrafts "recipe-new";
     recipe-import = withDrafts "recipe-import";
     recipe-aisle = withDrafts "recipe-aisle";
+    agenda = ./skills/agenda;
   };
 
   mcpServers = {
     meals = { command = lib.getExe meals; args = [ "serve" ]; };
+    agenda = { command = lib.getExe agenda; args = [ "serve" ]; };
 
     # Read-only: recipes reach the library through `drafts promote` and the cookidoo sync. Search is meals'
     # find_recipes, which knows aisle.conf's food names (cook's needs every word exactly, accents included).
@@ -51,7 +53,7 @@ let
   };
 in
 {
-  inherit (tools) cookidoo meals drafts;
+  inherit (tools) cookidoo meals drafts agenda;
 
   soul = builtins.readFile ./persona/SOUL.md;
   workspace = builtins.replaceStrings [ "@vaultRoot@" "@recipesRoot@" "@recipesUrl@" ] [ vaultRoot recipesRoot recipesUrl ] (builtins.readFile ./persona/workspace.md);
@@ -82,8 +84,9 @@ in
     mcp_servers = lib.mapAttrs (_: _: { tools = { resources = false; prompts = false; }; }) mcpServers;
 
     # `search` is web_search alone; pages go through the `fetch` MCP.
+    # No `todo`: a model takes its list for the user's tasks, which are the agenda's.
     # The terminal (`cli`) gets the same tools, so a conversation moved there keeps them.
-    platform_toolsets = lib.genAttrs [ "api_server" "cli" ] (_: [ "memory" "session_search" "todo" "vision" "cronjob" "terminal" "skills" "search" ]);
+    platform_toolsets = lib.genAttrs [ "api_server" "cli" ] (_: [ "memory" "session_search" "vision" "cronjob" "terminal" "skills" "search" ]);
 
     skills = {
       # Read-only, so agent-created skills land in HERMES_HOME/skills.
@@ -100,6 +103,7 @@ in
       "*curl*|*sh*"
       "rm -rf ${vaultRoot}*"
       "rm -rf ${recipesRoot}*"
+      "rm -rf ${calendarsRoot}*"
     ];
   };
 }

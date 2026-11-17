@@ -12,6 +12,7 @@ Small local models are unreliable at composing structured output, so the code co
 | [recipe-import](./skills/recipe-import/SKILL.md) | Drafts a recipe from a web page or video into the library |
 | [recipe-new](./skills/recipe-new/SKILL.md) | Drafts a recipe the user describes |
 | [recipe-aisle](./skills/recipe-aisle/SKILL.md) | Completes the shopping list's sections and ingredient names |
+| [agenda](./skills/agenda/SKILL.md) | Lists, adds, changes and removes calendar events and tasks |
 | youtube-content, pdf | Upstream hermes-agent skills |
 
 Without a skill, it reads and files notes in an Obsidian vault, searches the web and fetches pages.
@@ -32,6 +33,8 @@ alfredo = inputs.agents-alfredo.lib.alfredo {
     model = "<model>";
     speechUrl = "http://<whisper>/inference";
     cookidooCollection = "<collection>";
+    calendarsRoot = "/var/lib/calendars";   # a vdir the host keeps in sync, e.g. with vdirsyncer
+    defaultCalendar = "<folder>";           # the calendar new events and tasks go to
   };
 };
 ```

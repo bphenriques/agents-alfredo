@@ -1,18 +1,20 @@
-# Alfredo's meals, cookidoo and drafts programs, tested on build.
+# Alfredo's programs, tested on build. Each sits in its own folder; recipes and language are the modules they share.
 { pkgs, lib, facts }:
 let
-  inherit (facts) recipesRoot recipesUrl stateRoot cookidooCollection modelUrl model speechUrl;
+  inherit (facts) recipesRoot recipesUrl stateRoot cookidooCollection modelUrl model speechUrl calendarsRoot defaultCalendar;
 
   fill = import ./fill.nix { inherit lib; };
   tests = import ./tests.nix { inherit pkgs lib; };
   cook = lib.getExe pkgs.cook-cli;
   planFile = "${stateRoot}/meals-plan.json";   # meals' current plan, which drafts relinks on a rename
 
-  recipes = pkgs.python3Packages.toPythonModule
-    (pkgs.writeTextDir "${pkgs.python3.sitePackages}/recipes.py" (fill "recipes" { inherit cook; }));
+  shared = name: values: pkgs.python3Packages.toPythonModule
+    (pkgs.writeTextDir "${pkgs.python3.sitePackages}/${name}.py" (fill name values));
+  recipes = shared "recipes" { inherit cook; };
+  language = shared "language" { };
 
   # Depending on the tests means a failing program never builds, so it never deploys.
-  program = name: libraries: values: (pkgs.writers.writePython3Bin name { libraries = [ recipes ] ++ libraries; flakeIgnore = [ "E501" ]; }
+  program = name: libraries: values: (pkgs.writers.writePython3Bin name { libraries = [ recipes language ] ++ libraries; flakeIgnore = [ "E501" ]; }
     (fill name values)).overrideAttrs { inherit tests; };
 
   # On the state volume, writable: every refresh rotates the token.
@@ -27,7 +29,10 @@ let
     library = "${recipesRoot}/library"; drafts = "${recipesRoot}/drafts"; inherit planFile modelUrl model speechUrl cook;
     ytDlp = lib.getExe pkgs.yt-dlp; curl = lib.getExe pkgs.curl; magick = lib.getExe' pkgs.imagemagick "magick";
   };
+  agenda = program "agenda" (with pkgs.python3Packages; [ mcp icalendar recurring-ical-events tzdata ]) {
+    inherit calendarsRoot defaultCalendar;
+  };
 in
 {
-  inherit cookidoo meals drafts;
+  inherit cookidoo meals drafts agenda;
 }
