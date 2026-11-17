@@ -1,7 +1,7 @@
 ---
 name: agenda
 description: Read and change the user's calendar events and tasks.
-version: 1.1.0
+version: 1.2.0
 metadata:
   hermes:
     category: productivity
@@ -16,6 +16,7 @@ The user asks what they have on a day or a week, to add, change or remove an eve
 ## Procedure
 
 Every `agenda` tool returns text for the user. Reply with it exactly as returned, then at most one short question.
+A tool error is for you, not the user: do what it says, and ask the user only when it tells you to.
 
 Pass days, weeks, times and durations as the user said them ("quinta", "amanhã", "29/11", "esta semana", "15h",
 "1h30"), or as 2026-11-19 and 15:30. Never work out a date yourself.

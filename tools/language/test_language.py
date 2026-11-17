@@ -70,3 +70,23 @@ def test_period(words, start, end):
 
 def test_heading_names_today_and_tomorrow():
     assert [w.heading(TODAY + timedelta(n), TODAY) for n in range(3)] == ["hoje, ter 17/11", "amanhã, qua 18/11", "qui 19/11"]
+
+
+@pytest.mark.parametrize("words", ["seguinte", "terminar", "quartel", "sextou", "semanal"])
+def test_day_takes_only_whole_day_names(words):
+    with pytest.raises(w.NotUnderstood):
+        w.day(words, TODAY)
+
+
+@pytest.mark.parametrize("words, expected", [
+    ("1 de dezembro", date(2026, 12, 1)), ("dia 1 de dezembro", date(2026, 12, 1)), ("1 dez", date(2026, 12, 1)),
+    ("3 de janeiro de 2027", date(2027, 1, 3)), ("5 de março", date(2027, 3, 5)), ("2ª feira", date(2026, 11, 23)),
+    ("4f", date(2026, 11, 18)), ("dom.", date(2026, 11, 22)), ("Quinta-Feira", date(2026, 11, 19)),
+])
+def test_day_reads_months_and_short_forms(words, expected):
+    assert w.day(words, TODAY, future=True) == expected
+
+
+@pytest.mark.parametrize("words", ["semana que vem", "fim-de-semana"])
+def test_period_spellings(words):
+    assert w.period(words, TODAY)[1] - w.period(words, TODAY)[0] in (timedelta(7), timedelta(2))

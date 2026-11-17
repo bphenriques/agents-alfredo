@@ -315,7 +315,7 @@ def find_task(title, is_open=None):
     if len(found) > 1:
         raise ToolError(f"{len(found)} tasks match {title!r}. Ask the user which.")
     file, name = found[0]
-    cal = icalendar.Calendar.from_ical(file.read_bytes())
+    cal = read(file)
     return file, name, cal, single(cal)
 
 

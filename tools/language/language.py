@@ -5,7 +5,18 @@ import unicodedata
 from datetime import date, datetime, time, timedelta
 
 WEEKDAYS = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
-DAY_NAMES = (("seg", "mon"), ("ter", "tue"), ("qua", "wed"), ("qui", "thu"), ("sex", "fri"), ("sab", "sat"), ("dom", "sun"))
+# Whole words only, so "seguinte" or "terminar" is no day. Monday is the 2nd day ("2a", "2f") in Portuguese.
+DAY_NAMES = {name: n for n, names in enumerate((
+    ("seg", "segunda", "2a", "2f", "mon", "monday"), ("ter", "terca", "3a", "3f", "tue", "tuesday"),
+    ("qua", "quarta", "4a", "4f", "wed", "wednesday"), ("qui", "quinta", "5a", "5f", "thu", "thursday"),
+    ("sex", "sexta", "6a", "6f", "fri", "friday"), ("sab", "sabado", "sat", "saturday"), ("dom", "domingo", "sun", "sunday"),
+)) for name in names}
+MONTH_NAMES = {name: n + 1 for n, names in enumerate((
+    ("jan", "janeiro", "january"), ("fev", "fevereiro", "feb", "february"), ("mar", "marco", "march"),
+    ("abr", "abril", "apr", "april"), ("mai", "maio", "may"), ("jun", "junho", "june"), ("jul", "julho", "july"),
+    ("ago", "agosto", "aug", "august"), ("set", "setembro", "sep", "september"), ("out", "outubro", "oct", "october"),
+    ("nov", "novembro", "november"), ("dez", "dezembro", "dec", "december"),
+)) for name in names}
 RELATIVE = {"hoje": 0, "today": 0, "amanha": 1, "tomorrow": 1, "depois de amanha": 2, "ontem": -1, "yesterday": -1}
 
 
@@ -25,26 +36,27 @@ def matches(query, name):
 
 def day(text, today, future=False):
     """A date from 2026-11-29 or the user's words: hoje, amanhã, a weekday (the next one, today included), próxima
-    terça, 29/11, dia 29. With `future`, a day or month given alone is the next one."""
-    words = plain(text)
-    weekday = re.fullmatch(r"(?:(proxim[ao]|next) )?([a-z]{3})[a-z]*(?:[- ]feira)?", words)
-    numbers = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})|(?:dia )?(\d{1,2})(?:/(\d{1,2})(?:/(\d{2}|\d{4}))?)?", words)
+    terça, 29/11, dia 29, 1 de dezembro. With `future`, a day or month given alone is the next one."""
+    words = plain(text).replace("-", " ").rstrip(".")
+    weekday = re.fullmatch(r"(?:(proxim[ao]|next) )?(\w+?)\.?(?: feira)?", words)
+    iso = re.fullmatch(r"(\d{4}) (\d{1,2}) (\d{1,2})", words)
+    numbers = re.fullmatch(r"(?:dia )?(\d{1,2})(?:(?:/| de | )(\d{1,2}|[a-z]+)\.?(?:(?:/| de | )(\d{2}|\d{4}))?)?", words)
     try:
         if words in RELATIVE:
             return today + timedelta(RELATIVE[words])
-        if weekday and any(weekday[2] in names for names in DAY_NAMES):
-            n = next(n for n, names in enumerate(DAY_NAMES) if weekday[2] in names)
-            return today + timedelta((n - today.weekday()) % 7 or (7 if weekday[1] else 0))
-        if numbers and numbers[1]:
-            return date(int(numbers[1]), int(numbers[2]), int(numbers[3]))
+        if weekday and weekday[2] in DAY_NAMES:
+            return today + timedelta((DAY_NAMES[weekday[2]] - today.weekday()) % 7 or (7 if weekday[1] else 0))
+        if iso:
+            return date(*map(int, iso.groups()))
         if numbers:
-            d, month = int(numbers[4]), int(numbers[5] or today.month)
-            year = int(numbers[6]) % 100 + 2000 if numbers[6] else today.year
+            d, month = int(numbers[1]), numbers[2]
+            month = today.month if month is None else int(month) if month.isdigit() else MONTH_NAMES[month]
+            year = int(numbers[3]) % 100 + 2000 if numbers[3] else today.year
             found = date(year, month, d)
-            if future and found < today and not numbers[6]:
-                found = date(year + 1, month, d) if numbers[5] else date(year + month // 12, month % 12 + 1, d)
+            if future and found < today and not numbers[3]:
+                found = date(year + 1, month, d) if numbers[2] else date(year + month // 12, month % 12 + 1, d)
             return found
-    except ValueError:
+    except (ValueError, KeyError):
         pass
     raise NotUnderstood(f"{text!r} is not a day: pass 2026-11-29, or the user's hoje, amanhã, quinta or 29/11.")
 
@@ -68,13 +80,13 @@ def length(text):
 def period(text, today):
     """The days [start, end) a week's words name: esta semana (today to Sunday), próxima semana, fim de semana. Any
     other words name one day."""
-    words = plain(text)
+    words = plain(text).replace("-", " ")
     monday = today - timedelta(today.weekday())
-    if words in ("esta semana", "this week", "semana"):
+    if words in ("esta semana", "this week", "semana", "nesta semana"):
         return today, monday + timedelta(7)
-    if words in ("proxima semana", "next week"):
+    if words in ("proxima semana", "semana que vem", "next week"):
         return monday + timedelta(7), monday + timedelta(14)
-    if words in ("fim de semana", "este fim de semana", "weekend", "this weekend"):
+    if words in ("fim de semana", "este fim de semana", "no fim de semana", "weekend", "this weekend"):
         saturday = max(today, monday + timedelta(5))
         return saturday, monday + timedelta(7)
     start = day(text, today)
