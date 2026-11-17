@@ -35,6 +35,7 @@ alfredo = inputs.agents-alfredo.lib.alfredo {
     cookidooCollection = "<collection>";
     calendarsRoot = "/var/lib/calendars";   # a vdir the host keeps in sync, e.g. with vdirsyncer
     defaultCalendar = "<folder>";           # the calendar new events and tasks go to
+    syncCalendars = "<command>";            # syncs that vdir now; run after each change, without waiting
   };
 };
 ```

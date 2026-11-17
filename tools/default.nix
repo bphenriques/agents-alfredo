@@ -1,7 +1,7 @@
 # Alfredo's programs, tested on build. Each sits in its own folder; recipes and language are the modules they share.
 { pkgs, lib, facts }:
 let
-  inherit (facts) recipesRoot recipesUrl stateRoot cookidooCollection modelUrl model speechUrl calendarsRoot defaultCalendar;
+  inherit (facts) recipesRoot recipesUrl stateRoot cookidooCollection modelUrl model speechUrl calendarsRoot defaultCalendar syncCalendars;
 
   fill = import ./fill.nix { inherit lib; };
   tests = import ./tests.nix { inherit pkgs lib; };
@@ -30,7 +30,7 @@ let
     ytDlp = lib.getExe pkgs.yt-dlp; curl = lib.getExe pkgs.curl; magick = lib.getExe' pkgs.imagemagick "magick";
   };
   agenda = program "agenda" (with pkgs.python3Packages; [ mcp icalendar recurring-ical-events tzdata ]) {
-    inherit calendarsRoot defaultCalendar;
+    inherit calendarsRoot defaultCalendar syncCalendars;
   };
 in
 {

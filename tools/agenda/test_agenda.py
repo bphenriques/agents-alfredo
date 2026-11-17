@@ -11,6 +11,7 @@ from mcp.client.stdio import stdio_client
 import agenda as a
 
 TODAY = date(2026, 11, 17)   # a Tuesday
+synced = []   # each sync the tools started
 
 
 def ics(*components):
@@ -51,6 +52,9 @@ def vdir(tmp_path, monkeypatch):
     monkeypatch.setattr(a, "ROOT", tmp_path)
     monkeypatch.setattr(a, "DEFAULT", "personal")
     monkeypatch.setattr(a, "today", lambda: TODAY)
+    monkeypatch.setattr(a, "now", lambda: datetime(2026, 11, 17, 12, 0, tzinfo=a.ZONE))
+    monkeypatch.setattr(a.subprocess, "Popen", lambda command, **_: synced.append(command))
+    synced.clear()
     a.asked.clear()
     return tmp_path
 
@@ -155,6 +159,38 @@ def test_edit_and_remove_task_ask_first(vdir):
     assert run(a.remove_task("mãe", confirmed=True)) == "Tarefa removida: Ligar à mãe."
     with pytest.raises(a.ToolError, match="No open task"):
         run(a.complete_task("mãe"))
+
+
+def test_a_reminder_is_a_task_due_then_with_an_alarm(vdir):
+    assert run(a.add_task("Ligar ao canalizador", time="18h")) == "Tarefa adicionada: Ligar ao canalizador (até ter 17/11 18:00)."
+    task = only(vdir / "personal")
+    assert task["DUE"].dt == datetime(2026, 11, 17, 18, 0, tzinfo=a.ZONE)
+    [alarm] = task.walk("VALARM")
+    assert alarm["ACTION"] == "DISPLAY"
+    assert b"TRIGGER;VALUE=DATE-TIME:20261117T180000Z" in task.to_ical()
+    with pytest.raises(a.ToolError, match="já passou"):
+        run(a.add_task("Tarde demais", time="9h"))
+
+
+def test_a_reminder_moves_with_its_task(vdir):
+    run(a.add_task("Ligar ao canalizador", "sexta", "18h"))
+    assert run(a.edit_task("canalizador", new_due="sábado")) == "Mudo a data de Ligar ao canalizador para sáb 21/11 18:00?"
+    run(a.edit_task("canalizador", new_due="sábado", confirmed=True))
+    [alarm] = only(vdir / "personal").walk("VALARM")
+    assert alarm["TRIGGER"].dt == datetime(2026, 11, 21, 18, 0, tzinfo=a.ZONE)
+    run(a.edit_task("pão", new_time="19h"))
+    assert run(a.edit_task("pão", new_time="19h", confirmed=True)) == "Tarefa alterada: Comprar pão (até ter 17/11 19:00)."
+    assert len(only(vdir / "personal", "pao").walk("VALARM")) == 1
+
+
+def test_every_change_syncs(vdir):
+    run(a.list_tasks())
+    assert synced == []
+    run(a.add_task("Renovar o cartão"))
+    run(a.complete_task("cartão"))
+    run(a.remove_task("cartão"))
+    run(a.remove_task("cartão", confirmed=True))
+    assert synced == [["true"]] * 3
 
 
 def test_the_server_starts_and_offers_its_tools():

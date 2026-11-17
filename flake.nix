@@ -15,7 +15,7 @@
         vaultRoot = "/var/lib/vault"; recipesRoot = "/var/lib/recipes"; stateRoot = "/var/lib/hermes";
         recipesUrl = "https://recipes.test"; modelUrl = "http://model.test"; model = "test";
         speechUrl = "http://speech.test"; cookidooCollection = "test";
-        calendarsRoot = "/var/lib/calendars"; defaultCalendar = "personal";
+        calendarsRoot = "/var/lib/calendars"; defaultCalendar = "personal"; syncCalendars = "/bin/true";
       };
     in
     {

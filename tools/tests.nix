@@ -5,7 +5,7 @@ let
   fixture = { tokenFile = "token.json"; planFile = "plan.json"; library = "${./fixtures}"; site = "https://recipes.test";
               collection = "test"; cookidoo = "cookidoo"; drafts = "drafts"; modelUrl = "http://model.test";
               model = "test"; speechUrl = "http://speech.test"; ytDlp = "yt-dlp"; curl = "curl"; magick = "magick";
-              cook = lib.getExe pkgs.cook-cli; calendarsRoot = "calendars"; defaultCalendar = "personal"; };
+              cook = lib.getExe pkgs.cook-cli; calendarsRoot = "calendars"; defaultCalendar = "personal"; syncCalendars = "true"; };
   programs = [ "cookidoo" "meals" "drafts" "agenda" ];
   copy = name: "cp ${pkgs.writeText "${name}.py" (fill name fixture)} ${name}.py";
 in

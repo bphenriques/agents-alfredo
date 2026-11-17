@@ -3,6 +3,7 @@ and one iCalendar file per event or task."""
 import argparse
 import asyncio
 import os
+import subprocess
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +18,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 ROOT = Path("@calendarsRoot@")
 DEFAULT = "@defaultCalendar@"   # the folder new events and tasks go to
+SYNC = "@syncCalendars@"   # pushes the vdir to its servers, so a change shows elsewhere at once
 ZONE = ZoneInfo(os.environ.get("TZ") or os.path.realpath("/etc/localtime").split("zoneinfo/")[-1])
 EVENT_LENGTH = timedelta(hours=1)   # an event given a time but no duration
 CONFIRM_FOR = timedelta(minutes=10)   # a "sim" must answer the question the user just read
@@ -28,6 +30,10 @@ parsed = {}   # each file's contents, with the modification time and size they w
 
 def today():
     return date.today()
+
+
+def now():
+    return datetime.now(ZONE)
 
 
 def understood(read, *args):
@@ -111,6 +117,18 @@ def save(path, cal):
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(cal.to_ical())
     tmp.replace(path)
+    sync()
+
+
+def delete(path):
+    path.unlink()
+    sync()
+
+
+def sync():
+    """In the background: the reply never waits on the network, and a failed sync leaves it to the timer."""
+    subprocess.Popen([SYNC], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
 
 
 def new_calendar(component):
@@ -273,7 +291,7 @@ async def remove_event(title: str, day: str, confirmed: bool = False) -> str:
     what = f"{event['SUMMARY']}, {when(event.start, event.end)}{suffix(name)}"
     if not confirm(("remove_event", str(file)), confirmed):
         return f"Removo {what}?"
-    file.unlink()
+    delete(file)
     return f"Removido: {what}."
 
 
@@ -295,14 +313,50 @@ def task_due(task):
     return None if due is None else (local(due.dt).date() if isinstance(due.dt, datetime) else due.dt)
 
 
+def task_due_at(task):
+    """The date the task is due, or the local time when it has one."""
+    due = task.get("DUE")
+    return None if due is None else local(due.dt)
+
+
+def due_label(due):
+    """sex 20/11, or sex 20/11 18:00."""
+    return f"{label(due.date())} {due:%H:%M}" if isinstance(due, datetime) else label(due)
+
+
 def due_note(due):
     if due is None:
         return ""
-    return f" (atrasada desde {label(due)})" if due < today() else f" (até {label(due)})"
+    day = due.date() if isinstance(due, datetime) else due
+    return f" (atrasada desde {label(day)})" if day < today() else f" (até {due_label(due)})"
 
 
 def task_line(task, name):
-    return f"- {task['SUMMARY']}{due_note(task_due(task))}{suffix(name)}"
+    return f"- {task['SUMMARY']}{due_note(task_due_at(task))}{suffix(name)}"
+
+
+def due_from(day, time, current=None):
+    """A date, or a time on one: a time alone keeps the current day (today without one), a day alone the current time."""
+    if not time:
+        d = resolve(day, future=True)
+        return datetime.combine(d, current.time(), ZONE) if isinstance(current, datetime) else d
+    d = resolve(day, future=True) if day else current.date() if isinstance(current, datetime) else current or today()
+    due = datetime.combine(d, clock(time), ZONE)
+    if due < now():
+        raise ToolError(f"{label(d)} {due:%H:%M} já passou.")
+    return due
+
+
+def set_due(task, due):
+    """DUE, and at a time an RFC 5545 alarm then, absolute as every client reads it; any earlier alarm goes."""
+    replace(task, "DUE", due)
+    task.subcomponents = [c for c in task.subcomponents if c.name != "VALARM"]
+    if isinstance(due, datetime):
+        alarm = icalendar.Alarm()
+        alarm.add("ACTION", "DISPLAY")
+        alarm.add("DESCRIPTION", str(task["SUMMARY"]))
+        alarm.add("TRIGGER", due.astimezone(timezone.utc), parameters={"VALUE": "DATE-TIME"})
+        task.add_component(alarm)
 
 
 def find_task(title, is_open=None):
@@ -329,36 +383,40 @@ async def list_tasks() -> str:
 
 
 @mcp.tool(structured_output=False)
-async def add_task(title: str, due: str | None = None) -> str:
-    """Add a task. `due`, only when the user gives one, is 2026-11-20 or their words ("sexta", "29/11")."""
+async def add_task(title: str, due: str | None = None, time: str | None = None) -> str:
+    """Add a task. `due`, only when the user gives one, is 2026-11-20 or their words ("sexta", "29/11"). `time`, 18:00
+    or theirs ("18h"), makes it a reminder then, today when no `due`."""
     path, name = pick_calendar(None)
     task = icalendar.Todo()
     task.add("SUMMARY", title)
     task.add("STATUS", "NEEDS-ACTION")
-    if due:
-        task.add("DUE", resolve(due, future=True))
+    if due or time:
+        set_due(task, due_from(due, time))
     cal = new_calendar(task)
     save(path / f"{task['UID']}.ics", cal)
     return f"Tarefa adicionada: {task_line(task, name)[2:]}."
 
 
 @mcp.tool(structured_output=False)
-async def edit_task(title: str, new_title: str | None = None, new_due: str | None = None, confirmed: bool = False) -> str:
-    """Change the open task called `title`. Returns a question: relay it, and only after the user says yes call again
-    with the same arguments and `confirmed` true."""
-    if not (new_title or new_due):
-        raise ToolError("Nothing to change: pass new_title or new_due.")
+async def edit_task(title: str, new_title: str | None = None, new_due: str | None = None,
+                    new_time: str | None = None, confirmed: bool = False) -> str:
+    """Change the open task called `title`; `new_time` sets its reminder. Returns a question: relay it, and only after
+    the user says yes call again with the same arguments and `confirmed` true."""
+    if not (new_title or new_due or new_time):
+        raise ToolError("Nothing to change: pass new_title, new_due or new_time.")
     file, name, cal, task = find_task(title, is_open=True)
     before = task_line(task, name)[2:]
-    due = resolve(new_due, future=True) if new_due else task_due(task)
+    current = task_due_at(task)
+    due = due_from(new_due, new_time, current) if new_due or new_time else current
     new_name = new_title or str(task["SUMMARY"])
     after = f"{new_name}{due_note(due)}{suffix(name)}"
     if not confirm(("edit_task", str(file), after), confirmed):
         if new_name == str(task["SUMMARY"]):
-            return f"Mudo a data de {new_name} para {label(due)}?"
+            return f"Mudo a data de {new_name} para {due_label(due)}?"
         return f"Mudo a tarefa {before} para {after}?"
     replace(task, "SUMMARY", new_name)
-    replace(task, "DUE", due)
+    if due != current:
+        set_due(task, due)
     touch(task)
     save(file, cal)
     return f"Tarefa alterada: {after}."
@@ -396,7 +454,7 @@ async def remove_task(title: str, confirmed: bool = False) -> str:
     what = task_line(task, name)[2:]
     if not confirm(("remove_task", str(file)), confirmed):
         return f"Removo a tarefa {what}?"
-    file.unlink()
+    delete(file)
     return f"Tarefa removida: {what}."
 
 
