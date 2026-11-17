@@ -65,16 +65,38 @@ def length(text):
     return timedelta(hours=int(m[1] or 0), minutes=int(m[2] or 0))
 
 
+def period(text, today):
+    """The days [start, end) a week's words name: esta semana (today to Sunday), próxima semana, fim de semana. Any
+    other words name one day."""
+    words = plain(text)
+    monday = today - timedelta(today.weekday())
+    if words in ("esta semana", "this week", "semana"):
+        return today, monday + timedelta(7)
+    if words in ("proxima semana", "next week"):
+        return monday + timedelta(7), monday + timedelta(14)
+    if words in ("fim de semana", "este fim de semana", "weekend", "this weekend"):
+        saturday = max(today, monday + timedelta(5))
+        return saturday, monday + timedelta(7)
+    start = day(text, today)
+    return start, start + timedelta(1)
+
+
 def label(d):
     """A day as the user reads it: qui 19/11."""
     d = date.fromisoformat(d) if isinstance(d, str) else d
     return f"{WEEKDAYS[d.weekday()]} {d:%d/%m}"
 
 
+def heading(d, today):
+    """A day heading a list: hoje, ter 17/11, amanhã, qua 18/11, or qui 19/11."""
+    near = {0: "hoje, ", 1: "amanhã, "}.get((d - today).days, "")
+    return near + label(d)
+
+
 def span(start, end):
-    """A time span as the user reads it: qui 19/11 15:00–16:00, or qui 19/11 a sex 20/11 for whole days, whose end
-    is exclusive as in iCalendar. Times are shown as given: convert them to local time first."""
+    """A time span as the user reads it: qui 19/11 15:00–16:00, qui 19/11 (dia todo), or qui 19/11 a sex 20/11, whose
+    end is exclusive as in iCalendar. Times are shown as given: convert them to local time first."""
     if not isinstance(start, datetime):
         last = end - timedelta(1)
-        return label(start) + (f" a {label(last)}" if last > start else "")
+        return label(start) + (f" a {label(last)}" if last > start else " (dia todo)")
     return f"{label(start.date())} {start:%H:%M}–{end:%H:%M}"

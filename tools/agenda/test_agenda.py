@@ -35,12 +35,13 @@ def vdir(tmp_path, monkeypatch):
         (folder / "displayname").write_text(name)
     files = {
         personal / "dentista.ics": ics(event("dentista", "Dentista", "DTSTART;TZID=Europe/Lisbon:20261119T150000",
-                                             "DTEND;TZID=Europe/Lisbon:20261119T160000")),
+                                             "DTEND;TZID=Europe/Lisbon:20261119T160000", "LOCATION:Rua Augusta 120\r\n")),
         personal / "ginasio.ics": ics(event("ginasio", "Ginásio", "DTSTART;TZID=Europe/Lisbon:20261102T070000",
                                             "DTEND;TZID=Europe/Lisbon:20261102T080000", "RRULE:FREQ=WEEKLY;BYDAY=MO,TH\r\n")),
         personal / "feriado.ics": ics(event("feriado", "Feriado", "DTSTART;VALUE=DATE:20261208", "DTEND;VALUE=DATE:20261209")),
         personal / "luz.ics": ics(todo("luz", "Pagar a luz", "DUE;VALUE=DATE:20261120\r\nSTATUS:NEEDS-ACTION\r\n")),
         personal / "pao.ics": ics(todo("pao", "Comprar pão")),
+        personal / "seguro.ics": ics(todo("seguro", "Rever o seguro", "DUE;VALUE=DATE:20261110\r\n")),
         personal / "mae.ics": ics(todo("mae", "Ligar à mãe", "STATUS:COMPLETED\r\n")),
         shared / "jantar.ics": ics(event("jantar", "Jantar com amigos", "DTSTART:20261119T200000Z",
                                          "DTEND:20261119T220000Z")),
@@ -74,16 +75,16 @@ def test_changes_refuse_the_past_and_words_that_are_no_day(vdir):
 
 
 def test_list_events_merges_calendars_and_tasks(vdir):
-    assert run(a.list_events("quinta")) == ("qui 19/11\n- 07:00–08:00 Ginásio\n- 15:00–16:00 Dentista\n"
+    assert run(a.list_events("quinta")) == ("qui 19/11\n- 07:00–08:00 Ginásio\n- 15:00–16:00 Dentista (Rua Augusta 120)\n"
                                             "- 20:00–22:00 Jantar com amigos · Casa 🏠 Partilhado")
     assert run(a.list_events("sexta")) == "sex 20/11\n- Pagar a luz (tarefa)"
-    assert run(a.list_events("8/12")) == "ter 08/12\n- Feriado"
+    assert run(a.list_events("8/12")) == "ter 08/12\n- Feriado (dia todo)"
 
 
 def test_list_events_over_several_days(vdir):
     assert run(a.list_events("quinta", 2)).split("\n\n")[1] == "sex 20/11\n- Pagar a luz (tarefa)"
     assert run(a.list_events("21/11", 2)) == "Nada de sáb 21/11 a dom 22/11."
-    assert run(a.list_events("hoje")) == "Nada na ter 17/11."
+    assert run(a.list_events("21/11", 1)) == "Nada para sáb 21/11."
 
 
 def test_add_event_timed_in_the_default_calendar(vdir):
@@ -94,7 +95,7 @@ def test_add_event_timed_in_the_default_calendar(vdir):
 
 
 def test_add_event_by_calendar_name_whole_day(vdir):
-    assert run(a.add_event("Férias", "29/11", calendar="partilhado")) == "Adicionado: Férias, dom 29/11 · Casa 🏠 Partilhado."
+    assert run(a.add_event("Férias", "29/11", calendar="partilhado")) == "Adicionado: Férias, dom 29/11 (dia todo) · Casa 🏠 Partilhado."
     assert only(vdir / "shared")["DTSTART"].dt == date(2026, 11, 29)
 
 
@@ -110,7 +111,7 @@ def test_add_event_refusals(vdir):
 def test_edit_event_asks_first_and_keeps_the_length(vdir):
     before = (vdir / "personal" / "dentista.ics").read_text()
     question = run(a.edit_event("dentista", "quinta", new_day="sexta", confirmed=True))   # never asked yet: asks
-    assert question == "Mudo Dentista, qui 19/11 15:00–16:00 para Dentista, sex 20/11 15:00–16:00? Responde sim para confirmar."
+    assert question == "Mudo Dentista de qui 19/11 15:00–16:00 para sex 20/11 15:00–16:00?"
     assert (vdir / "personal" / "dentista.ics").read_text() == before
     assert run(a.edit_event("dentista", "quinta", new_day="sexta", confirmed=True)) == "Alterado: Dentista, sex 20/11 15:00–16:00."
     changed = only(vdir / "personal", "dentista")
@@ -124,7 +125,7 @@ def test_edit_event_confirms_only_what_was_asked(vdir):
 
 
 def test_remove_event(vdir):
-    assert run(a.remove_event("jantar", "quinta")).startswith("Removo Jantar com amigos, qui 19/11 20:00–22:00")
+    assert run(a.remove_event("jantar", "quinta")) == "Removo Jantar com amigos, qui 19/11 20:00–22:00 · Casa 🏠 Partilhado?"
     assert run(a.remove_event("jantar", "quinta", confirmed=True)) == "Removido: Jantar com amigos, qui 19/11 20:00–22:00 · Casa 🏠 Partilhado."
     assert not (vdir / "shared" / "jantar.ics").exists()
 
@@ -137,19 +138,20 @@ def test_repeating_events_and_misses_are_refused(vdir):
 
 
 def test_tasks_lifecycle(vdir):
-    assert run(a.list_tasks()) == "- Pagar a luz (até sex 20/11)\n- Comprar pão"
+    assert run(a.list_tasks()) == "- Rever o seguro (atrasada desde ter 10/11)\n- Pagar a luz (até sex 20/11)\n- Comprar pão"
     assert run(a.add_task("Renovar o cartão", "29/11")) == "Tarefa adicionada: Renovar o cartão (até dom 29/11)."
     assert run(a.complete_task("luz")) == "Feito: Pagar a luz."
     assert only(vdir / "personal", "luz")["STATUS"] == "COMPLETED"
-    assert run(a.list_tasks()) == "- Renovar o cartão (até dom 29/11)\n- Comprar pão"
+    assert run(a.list_tasks()) == "- Rever o seguro (atrasada desde ter 10/11)\n- Renovar o cartão (até dom 29/11)\n- Comprar pão"
     assert run(a.reopen_task("luz")) == "Reaberta: Pagar a luz (até sex 20/11)."
     assert "COMPLETED" not in only(vdir / "personal", "luz")
 
 
 def test_edit_and_remove_task_ask_first(vdir):
-    assert run(a.edit_task("pão", new_due="sexta")).startswith("Mudo a tarefa Comprar pão para Comprar pão (até sex 20/11)?")
+    assert run(a.edit_task("pão", new_due="sexta")) == "Mudo a data de Comprar pão para sex 20/11?"
+    assert run(a.edit_task("pão", new_title="Comprar pão e leite")) == "Mudo a tarefa Comprar pão para Comprar pão e leite?"
     assert run(a.edit_task("pão", new_due="sexta", confirmed=True)) == "Tarefa alterada: Comprar pão (até sex 20/11)."
-    assert run(a.remove_task("mãe", confirmed=True)).startswith("Removo a tarefa Ligar à mãe?")
+    assert run(a.remove_task("mãe", confirmed=True)) == "Removo a tarefa Ligar à mãe?"
     assert run(a.remove_task("mãe", confirmed=True)) == "Tarefa removida: Ligar à mãe."
     with pytest.raises(a.ToolError, match="No open task"):
         run(a.complete_task("mãe"))
@@ -163,3 +165,20 @@ def test_the_server_starts_and_offers_its_tools():
             return {t.name for t in (await session.list_tools()).tools}
     assert asyncio.run(tools()) == {"list_events", "add_event", "edit_event", "remove_event", "list_tasks", "add_task",
                                     "edit_task", "complete_task", "reopen_task", "remove_task"}
+
+
+def test_today_and_this_week(vdir):
+    assert run(a.list_events()) == "hoje, ter 17/11\n- Rever o seguro (tarefa, atrasada desde ter 10/11)"
+    week = run(a.list_events("esta semana")).split("\n\n")
+    assert [d.split("\n")[0] for d in week] == ["hoje, ter 17/11", "qui 19/11", "sex 20/11"]
+
+
+def test_files_are_parsed_again_only_when_they_change(vdir, monkeypatch):
+    run(a.list_events("quinta"))
+    calls = []
+    monkeypatch.setattr(a.icalendar.Calendar, "from_ical", lambda data: calls.append(data) or icalendar.Calendar())
+    run(a.list_events("quinta"))
+    assert calls == []
+    (vdir / "personal" / "pao.ics").write_text(ics(todo("pao", "Comprar pão e leite")))
+    run(a.list_tasks())
+    assert len(calls) == 1

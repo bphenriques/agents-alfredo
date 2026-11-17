@@ -23,6 +23,7 @@ CONFIRM_FOR = timedelta(minutes=10)   # a "sim" must answer the question the use
 
 mcp = MCPServer("agenda")
 asked = {}   # each change awaiting confirmation, and when it was asked
+parsed = {}   # each file's contents, with the modification time and size they were read at
 
 
 def today():
@@ -68,11 +69,21 @@ def pick_calendar(name):
     return found[0]
 
 
+def read(file):
+    """A file's contents, parsed again only when it changed: the server lives on, and parsing every file each call
+    takes seconds."""
+    stat = file.stat()
+    seen = (stat.st_mtime_ns, stat.st_size)
+    if file not in parsed or parsed[file][0] != seen:
+        parsed[file] = (seen, icalendar.Calendar.from_ical(file.read_bytes()))
+    return parsed[file][1]
+
+
 def items():
     """Every event and task file: its path, its calendar's name, and its contents."""
     for path, name in calendars():
         for file in sorted(path.glob("*.ics")):
-            yield file, name, icalendar.Calendar.from_ical(file.read_bytes())
+            yield file, name, read(file)
 
 
 def single(cal):
@@ -138,10 +149,6 @@ def confirm(change, confirmed):
     return False
 
 
-def ask(question):
-    return f"{question} Responde sim para confirmar."
-
-
 # Events
 
 
@@ -164,29 +171,36 @@ def find_event(title, day):
 
 
 def event_line(event, name):
+    """- 15:00–16:00 Dentista (Rua Augusta 120), or - Feriado (dia todo)."""
     start, end = event.start, event.end
-    span = f"{local(start):%H:%M}–{local(end):%H:%M} " if isinstance(start, datetime) else ""
-    until = f" (até {label(end - timedelta(1))})" if not isinstance(start, datetime) and end - start > timedelta(1) else ""
-    return f"- {span}{event.get('SUMMARY', '')}{until}{suffix(name)}"
+    notes = [str(event["LOCATION"])] if event.get("LOCATION") else []
+    if not isinstance(start, datetime):
+        notes.insert(0, f"até {label(end - timedelta(1))}" if end - start > timedelta(1) else "dia todo")
+    hours = f"{local(start):%H:%M}–{local(end):%H:%M} " if isinstance(start, datetime) else ""
+    return f"- {hours}{event.get('SUMMARY', '')}{f' ({', '.join(notes)})' if notes else ''}{suffix(name)}"
 
 
 @mcp.tool(structured_output=False)   # plain text for the user; a structured copy would only double it
-async def list_events(day: str | None = None, days: int = 1) -> str:
-    """The events, and the tasks due, from `day` for `days` days in every calendar. A day is 2026-11-19 or the
-    user's own words ("hoje", "quinta", "29/11"), today by default."""
-    first = resolve(day) if day else today()
-    last = first + timedelta(max(days, 1))
+async def list_events(day: str | None = None, days: int | None = None) -> str:
+    """The events and the open tasks due in every calendar, today by default. `day` is 2026-11-19 or the user's own
+    words: a day ("hoje", "quinta", "29/11") or a week ("esta semana", "próxima semana", "fim de semana"). `days` only
+    to cover more days from a single day."""
+    first, last = understood(language.period, day, today()) if day else (today(), today() + timedelta(1))
+    last = first + timedelta(days) if days else last
     by_day = {}
     for _, name, _, event in occurrences(first, last):
         start = event.start.date() if isinstance(event.start, datetime) else event.start
         by_day.setdefault(max(start, first), []).append((local(event.start).isoformat(), event_line(event, name)))
     for _, name, task in tasks():
         due = task_due(task)
-        if task_open(task) and due and first <= due < last:
-            by_day.setdefault(due, []).append(("~", f"- {task['SUMMARY']} (tarefa){suffix(name)}"))
+        if task_open(task) and due and (first <= due < last or due < today() and first <= today() < last):
+            late = f", atrasada desde {label(due)}" if due < today() else ""
+            by_day.setdefault(max(due, today()), []).append(("~", f"- {task['SUMMARY']} (tarefa{late}){suffix(name)}"))
     if not by_day:
-        return f"Nada {'na' if days <= 1 else 'de'} {label(first)}{f' a {label(last - timedelta(1))}' if days > 1 else ''}."
-    return "\n\n".join(f"{label(d)}\n" + "\n".join(line for _, line in sorted(by_day[d])) for d in sorted(by_day))
+        one_day = last - first == timedelta(1)
+        return f"Nada para {language.heading(first, today())}." if one_day else f"Nada de {label(first)} a {label(last - timedelta(1))}."
+    return "\n\n".join(f"{language.heading(d, today())}\n" + "\n".join(line for _, line in sorted(by_day[d]))
+                       for d in sorted(by_day))
 
 
 @mcp.tool(structured_output=False)
@@ -235,9 +249,11 @@ async def edit_event(title: str, day: str, new_title: str | None = None, new_day
     else:
         new_start, new_end = target, target + (end - start)
     new_name = new_title or str(event["SUMMARY"])
-    before, after = f"{event['SUMMARY']}, {when(start, end)}", f"{new_name}, {when(new_start, new_end)}"
+    title_now, was, will = str(event["SUMMARY"]), when(start, end), when(new_start, new_end)
+    after = f"{new_name}, {will}"
     if not confirm(("edit_event", str(file), after), confirmed):
-        return ask(f"Mudo {before} para {after}{suffix(name)}?")
+        change = f"{title_now} de {was} para {will}" if new_name == title_now else f"{title_now}, {was}, para {after}"
+        return f"Mudo {change}{suffix(name)}?"
     replace(event, "SUMMARY", new_name)
     replace(event, "DURATION", None)
     replace(event, "DTSTART", new_start)
@@ -256,7 +272,7 @@ async def remove_event(title: str, day: str, confirmed: bool = False) -> str:
     event = single(cal)
     what = f"{event['SUMMARY']}, {when(event.start, event.end)}{suffix(name)}"
     if not confirm(("remove_event", str(file)), confirmed):
-        return ask(f"Removo {what}?")
+        return f"Removo {what}?"
     file.unlink()
     return f"Removido: {what}."
 
@@ -279,9 +295,14 @@ def task_due(task):
     return None if due is None else (local(due.dt).date() if isinstance(due.dt, datetime) else due.dt)
 
 
+def due_note(due):
+    if due is None:
+        return ""
+    return f" (atrasada desde {label(due)})" if due < today() else f" (até {label(due)})"
+
+
 def task_line(task, name):
-    due = task_due(task)
-    return f"- {task['SUMMARY']}{f' (até {label(due)})' if due else ''}{suffix(name)}"
+    return f"- {task['SUMMARY']}{due_note(task_due(task))}{suffix(name)}"
 
 
 def find_task(title, is_open=None):
@@ -331,9 +352,11 @@ async def edit_task(title: str, new_title: str | None = None, new_due: str | Non
     before = task_line(task, name)[2:]
     due = resolve(new_due, future=True) if new_due else task_due(task)
     new_name = new_title or str(task["SUMMARY"])
-    after = f"{new_name}{f' (até {label(due)})' if due else ''}{suffix(name)}"
+    after = f"{new_name}{due_note(due)}{suffix(name)}"
     if not confirm(("edit_task", str(file), after), confirmed):
-        return ask(f"Mudo a tarefa {before} para {after}?")
+        if new_name == str(task["SUMMARY"]):
+            return f"Mudo a data de {new_name} para {label(due)}?"
+        return f"Mudo a tarefa {before} para {after}?"
     replace(task, "SUMMARY", new_name)
     replace(task, "DUE", due)
     touch(task)
@@ -372,7 +395,7 @@ async def remove_task(title: str, confirmed: bool = False) -> str:
     file, name, cal, task = find_task(title)
     what = task_line(task, name)[2:]
     if not confirm(("remove_task", str(file)), confirmed):
-        return ask(f"Removo a tarefa {what}?")
+        return f"Removo a tarefa {what}?"
     file.unlink()
     return f"Tarefa removida: {what}."
 
@@ -386,7 +409,6 @@ def main():
         case "serve":
             mcp.run()
         case "list":
-
             print(asyncio.run(list_events()), asyncio.run(list_tasks()), sep="\n\n")
 
 

@@ -56,5 +56,17 @@ def test_matches_ignores_case_accents_and_emoji():
 def test_label_and_span():
     assert w.label("2026-11-19") == w.label(date(2026, 11, 19)) == "qui 19/11"
     assert w.span(datetime(2026, 11, 19, 15), datetime(2026, 11, 19, 16, 30)) == "qui 19/11 15:00–16:30"
-    assert w.span(date(2026, 11, 19), date(2026, 11, 20)) == "qui 19/11"
+    assert w.span(date(2026, 11, 19), date(2026, 11, 20)) == "qui 19/11 (dia todo)"
     assert w.span(date(2026, 11, 19), date(2026, 11, 22)) == "qui 19/11 a sáb 21/11"
+
+
+@pytest.mark.parametrize("words, start, end", [
+    ("esta semana", TODAY, date(2026, 11, 23)), ("próxima semana", date(2026, 11, 23), date(2026, 11, 30)),
+    ("fim de semana", date(2026, 11, 21), date(2026, 11, 23)), ("quinta", date(2026, 11, 19), date(2026, 11, 20)),
+])
+def test_period(words, start, end):
+    assert w.period(words, TODAY) == (start, end)
+
+
+def test_heading_names_today_and_tomorrow():
+    assert [w.heading(TODAY + timedelta(n), TODAY) for n in range(3)] == ["hoje, ter 17/11", "amanhã, qua 18/11", "qui 19/11"]
