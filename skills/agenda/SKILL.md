@@ -1,7 +1,7 @@
 ---
 name: agenda
 description: Read and change the user's calendar events and tasks.
-version: 1.3.0
+version: 1.3.1
 metadata:
   hermes:
     category: productivity
@@ -35,7 +35,7 @@ the same tool again with the same arguments and `confirmed` true.
 | cancel or remove an event | `remove_event` |
 | what tasks do I have | `list_tasks` |
 | something to do, maybe by a day: "tenho de pagar a luz até sexta" | `add_task` |
-| a reminder at a time: "lembra-me às 18h de ligar à mãe" | `add_task` with `time`, and `due` when they name a day |
+| a reminder at a time: "lembra-me às 18h de ligar à mãe" | `add_task` with `time`, and `due` when they name a day; never `cronjob` |
 | change a task's name, date or reminder time | `edit_task` |
 | a task is done | `complete_task` |
 | a task is not done after all | `reopen_task` |
