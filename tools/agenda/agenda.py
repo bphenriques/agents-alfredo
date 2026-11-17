@@ -320,8 +320,8 @@ def task_due_at(task):
 
 
 def due_label(due):
-    """sex 20/11, or sex 20/11 18:00."""
-    return f"{label(due.date())} {due:%H:%M}" if isinstance(due, datetime) else label(due)
+    """sex 20/11, or sex 20/11 às 18:00."""
+    return f"{label(due.date())} às {due:%H:%M}" if isinstance(due, datetime) else label(due)
 
 
 def due_note(due):

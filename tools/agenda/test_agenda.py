@@ -162,7 +162,7 @@ def test_edit_and_remove_task_ask_first(vdir):
 
 
 def test_a_reminder_is_a_task_due_then_with_an_alarm(vdir):
-    assert run(a.add_task("Ligar ao canalizador", time="18h")) == "Tarefa adicionada: Ligar ao canalizador (até ter 17/11 18:00)."
+    assert run(a.add_task("Ligar ao canalizador", time="18h")) == "Tarefa adicionada: Ligar ao canalizador (até ter 17/11 às 18:00)."
     task = only(vdir / "personal")
     assert task["DUE"].dt == datetime(2026, 11, 17, 18, 0, tzinfo=a.ZONE)
     [alarm] = task.walk("VALARM")
@@ -174,12 +174,12 @@ def test_a_reminder_is_a_task_due_then_with_an_alarm(vdir):
 
 def test_a_reminder_moves_with_its_task(vdir):
     run(a.add_task("Ligar ao canalizador", "sexta", "18h"))
-    assert run(a.edit_task("canalizador", new_due="sábado")) == "Mudo a data de Ligar ao canalizador para sáb 21/11 18:00?"
+    assert run(a.edit_task("canalizador", new_due="sábado")) == "Mudo a data de Ligar ao canalizador para sáb 21/11 às 18:00?"
     run(a.edit_task("canalizador", new_due="sábado", confirmed=True))
     [alarm] = only(vdir / "personal").walk("VALARM")
     assert alarm["TRIGGER"].dt == datetime(2026, 11, 21, 18, 0, tzinfo=a.ZONE)
     run(a.edit_task("pão", new_time="19h"))
-    assert run(a.edit_task("pão", new_time="19h", confirmed=True)) == "Tarefa alterada: Comprar pão (até ter 17/11 19:00)."
+    assert run(a.edit_task("pão", new_time="19h", confirmed=True)) == "Tarefa alterada: Comprar pão (até ter 17/11 às 19:00)."
     assert len(only(vdir / "personal", "pao").walk("VALARM")) == 1
 
 
