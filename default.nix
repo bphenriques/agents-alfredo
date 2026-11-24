@@ -78,6 +78,10 @@ in
     agent = {
       max_turns = 25;
       budget_warning_ratio = 0.8;
+      # "auto" briefs `acp`, `cli` and `tui` as a coding agent in a project (the workspace's AGENTS.md), so it reaches for the terminal.
+      coding_context = "off";
+      # Appended to its prompt over ACP, whose one client is the desktop menu (quick-key's Ask).
+      platform_hints.acp = "You answer in the user's desktop menu, in a small box: keep answers short.";
     };
 
     # Otherwise hermes adds four prompt/resource wrapper tools per server, outside the allowlists.
@@ -85,8 +89,9 @@ in
 
     # `search` is web_search alone; pages go through the `fetch` MCP.
     # No `todo`: a model takes its list for the user's tasks, which are the agenda's.
-    # The terminal (`cli`) gets the same tools, so a conversation moved there keeps them.
-    platform_toolsets = lib.genAttrs [ "api_server" "cli" ] (_: [ "memory" "session_search" "vision" "cronjob" "terminal" "skills" "search" ]);
+    # The terminal (`cli`) and a desktop client over ACP (`acp`) get the same tools, so a conversation moved keeps them;
+    # unset, `acp` falls back to hermes' coding set (files, code execution, `todo`). The recipe skills need `terminal`.
+    platform_toolsets = lib.genAttrs [ "api_server" "cli" "acp" ] (_: [ "memory" "session_search" "vision" "cronjob" "terminal" "skills" "search" ]);
 
     skills = {
       # Read-only, so agent-created skills land in HERMES_HOME/skills.
